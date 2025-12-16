@@ -147,72 +147,76 @@ if __name__ == "__main__":
 
 # --- build-adguard-upstream.yml ---
 # name: Build AdGuard Upstream DNS (Pro)
-#
-# on:
-#   workflow_dispatch:
-#   schedule:
-#     - cron: "0 3 * * *"   # 每天 UTC 03:00
-#
-# jobs:
-#   build:
-#     runs-on: ubuntu-latest
-#
-#     steps:
-#       - name: Checkout repository
-#         uses: actions/checkout@v4
-#
-#       - name: Set up Python
-#         uses: actions/setup-python@v5
-#         with:
-#           python-version: "3.x"
-#
-#       - name: Install dependencies
-#         run: pip install requests
-#
-#       - name: Generate upstream_dns.txt
-#         run: python generate_adguard_upstream_from_geosite.py upstream_dns.txt
-#
-#       - name: Calculate checksum
-#         id: checksum
-#         run: |
-#           sha256sum upstream_dns.txt | awk '{print $1}' > checksum.txt
-#           echo "hash=$(cat checksum.txt)" >> $GITHUB_OUTPUT
-#
-#       - name: Get previous checksum
-#         id: prev
-#         run: |
-#           if [ -f .last_checksum ]; then
-#             echo "hash=$(cat .last_checksum)" >> $GITHUB_OUTPUT
-#           else
-#             echo "hash=none" >> $GITHUB_OUTPUT
-#           fi
-#
-#       - name: Stop if no change
-#         if: steps.checksum.outputs.hash == steps.prev.outputs.hash
-#         run: |
-#           echo "No changes detected, skipping release."
-#           exit 0
-#
-#       - name: Save new checksum
-#         run: echo "${{ steps.checksum.outputs.hash }}" > .last_checksum
-#
-#       - name: Commit checksum
-#         run: |
-#           git config user.name "github-actions"
-#           git config user.email "github-actions@github.com"
-#           git add .last_checksum
-#           git commit -m "chore: update checksum" || true
-#           git push || true
-#
-#       - name: Create / Update Release (latest)
-#         uses: softprops/action-gh-release@v2
-#         with:
-#           tag_name: latest
-#           name: "AdGuard Upstream DNS (Latest)"
-#           body: |
-#             自动生成的 AdGuard Home upstream_dns_file
-#             更新时间：${{ github.run_id }}
-#           files: |
-#             upstream_dns.txt
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# 🔐 关键修复：显式声明权限，否则 GITHUB_TOKEN 默认无 release 权限
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"   # 每天 UTC 03:00
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Generate upstream_dns.txt
+        run: python generate_adguard_upstream_from_geosite.py upstream_dns.txt
+
+      - name: Calculate checksum
+        id: checksum
+        run: |
+          sha256sum upstream_dns.txt | awk '{print $1}' > checksum.txt
+          echo "hash=$(cat checksum.txt)" >> $GITHUB_OUTPUT
+
+      - name: Get previous checksum
+        id: prev
+        run: |
+          if [ -f .last_checksum ]; then
+            echo "hash=$(cat .last_checksum)" >> $GITHUB_OUTPUT
+          else
+            echo "hash=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Stop if no change
+        if: steps.checksum.outputs.hash == steps.prev.outputs.hash
+        run: |
+          echo "No changes detected, skipping release."
+          exit 0
+
+      - name: Save new checksum
+        run: echo "${{ steps.checksum.outputs.hash }}" > .last_checksum
+
+      - name: Commit checksum
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .last_checksum
+          git commit -m "chore: update checksum" || true
+          git push || true
+
+      - name: Create / Update Release (latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "AdGuard Upstream DNS (Latest)"
+          body: |
+            自动生成的 AdGuard Home upstream_dns_file
+            构建编号：${{ github.run_number }}
+          files: |
+            upstream_dns.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
