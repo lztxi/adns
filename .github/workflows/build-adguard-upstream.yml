@@ -72,6 +72,13 @@ jobs:
         with:
           tag_name: latest
           name: "AdGuard Upstream DNS (Latest)"
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
           body: |
             自动生成的 AdGuard Home upstream_dns_file
-            
+            构建编号：${{ github.run_number }}
+          files: |
+            upstream_dns.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
