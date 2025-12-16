@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-
-# ================= README 状态徽章 =================
-# 在 README.md 中加入以下内容即可显示构建状态：
-# ![Build AdGuard Upstream DNS](https://github.com/<YOUR_NAME>/<REPO>/actions/workflows/build-adguard-upstream.yml/badge.svg)
-#
-# 可选（点击跳转）：
-# [![Build AdGuard Upstream DNS](https://github.com/<YOUR_NAME>/<REPO>/actions/workflows/build-adguard-upstream.yml/badge.svg)](https://github.com/<YOUR_NAME>/<REPO>/actions/workflows/build-adguard-upstream.yml)
-
 根据 **在线 domain-list-community（文本版）** 生成 AdGuard Home upstream_dns_file。
 
 🚫 已彻底移除：
@@ -110,19 +102,11 @@ def _self_test():
 # ================= 主逻辑 =================
 
 def main():
-    # 参数处理：不再强制要求参数，避免 SystemExit: 1
-    if len(sys.argv) == 1:
-        output = DEFAULT_OUTPUT
-        print(f"ℹ 未指定输出文件，使用默认：{output}")
-    elif len(sys.argv) == 2:
-        output = sys.argv[1]
-    elif len(sys.argv) == 2 and sys.argv[1] == "--test":
-        _self_test()
-        return
-    else:
-        print("Usage: python generate_adguard_upstream_from_geosite.py [output.txt]")
-        return
+    if len(sys.argv) != 2:
+        print("Usage: python generate_adguard_upstream_from_geosite.py output.txt")
+        sys.exit(1)
 
+    output = sys.argv[1]
     rules = defaultdict(set)
 
     for dns, lists in SOURCES.items():
@@ -133,13 +117,31 @@ def main():
             except Exception as e:
                 print(f"⚠ 无法拉取 {name}: {e}")
 
+    domain_count = 0
     with open(output, "w", encoding="utf-8") as f:
         for dns, domains in rules.items():
             for d in sorted(domains):
-                f.write(f"[/{d}/]{dns}\n")
+                f.write(f"[/{d}/]{dns}
+")
+                domain_count += 1
 
-    print(f"✔ 已生成 {output}")
+    # 生成统计信息（供 README 使用）
+    from datetime import datetime, timezone
+    with open("stats.json", "w", encoding="utf-8") as s:
+        s.write(
+            '{
+'
+            f'  "domains": {domain_count},
+'
+            f'  "updated": "{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+'
+            '}
+'
+        )
+
+    print(f"✔ 已生成 {output}（{domain_count} domains）")
 
 
 if __name__ == "__main__":
     main()
+
