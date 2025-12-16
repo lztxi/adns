@@ -4,8 +4,8 @@
 # 2. 固定 latest tag，方便订阅
 # 3. 失败自动终止，不产出脏 Release
 # 4. 支持手动 / 定时触发
-
 name: Build AdGuard Upstream DNS (Pro)
+
 permissions:
   contents: write
 
