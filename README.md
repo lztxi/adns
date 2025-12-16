@@ -1,4 +1,4 @@
 # adns
-[![Build AdGuard Upstream DNS](https://github.com/<YOUR_NAME>/<REPO>/actions/workflows/build-adguard-upstream.yml/badge.svg)](
-https://github.com/<YOUR_NAME>/<REPO>/actions/workflows/build-adguard-upstream.yml
+[![Build AdGuard Upstream DNS](https://github.com/lztxi/adns/actions/workflows/build-adguard-upstream.yml/badge.svg)](
+https://github.com/lztxi/adns/actions/workflows/build-adguard-upstream.yml
 )
