@@ -6,8 +6,6 @@
 # 4. 支持手动 / 定时触发
 
 name: Build AdGuard Upstream DNS (Pro)
-
-# 🔐 关键修复：显式声明权限，否则 GITHUB_TOKEN 默认无 release 权限
 permissions:
   contents: write
 
