@@ -12,17 +12,17 @@
 - GitHub Raw，长期稳定，不会 404
 
 规则：
-- 腾讯系        -> 腾讯 DNS
-- 字节系        -> 字节 DNS
-- 阿里系        -> 阿里 DNS
-- 百度系        -> 百度 DNS
-- 小米 / OPPO   -> 各自 DNS
-- Apple 中国    -> 阿里 DNS
-- 中国大陆兜底  -> 202.98.0.68
+- 腾讯系         -> 腾讯 DNS
+- 字节系         -> 字节 DNS
+- 阿里系         -> 阿里 DNS
+- 百度系         -> 百度 DNS
+- 小米 / OPPO    -> 各自 DNS
+- Apple 中国     -> 阿里 DNS
+- 中国大陆兜底    -> 202.98.0.68
 
 用法（两种都支持）：
   python generate_adguard_upstream_from_geosite.py upstream_dns.txt
-  python generate_adguard_upstream_from_geosite.py        # 自动生成 upstream_dns.txt
+  python generate_adguard_upstream_from_geosite.py          # 自动生成 upstream_dns.txt
 
 依赖：
   pip install requests
@@ -32,6 +32,7 @@ import sys
 import requests
 from collections import defaultdict
 from typing import List
+from datetime import datetime, timezone
 
 # ================= DNS 定义 =================
 DNS_TENCENT = "119.29.29.29"
@@ -73,8 +74,12 @@ def fetch_list(name: str) -> List[str]:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        # 匹配 domain: 规则，注意去除可能存在的空格
         if line.startswith("domain:"):
-            domains.append(line.split(":", 1)[1])
+            # 使用 split(":", 1) 确保只按第一个冒号分割
+            domain_part = line.split(":", 1)[1].strip()
+            if domain_part: # 确保不是空的 domain
+                 domains.append(domain_part)
     return domains
 
 
@@ -100,45 +105,67 @@ def _self_test():
 # ================= 主逻辑 =================
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python generate_adguard_upstream_from_geosite.py output.txt")
+    # --- 修复逻辑：支持 0 个或 1 个参数 ---
+    if len(sys.argv) == 1:
+        # 没有提供参数，使用默认输出文件名
+        output = DEFAULT_OUTPUT
+        print(f"没有指定输出文件，将使用默认值: {output}")
+    elif len(sys.argv) == 2:
+        # 提供了一个参数作为输出文件名
+        output = sys.argv[1]
+    else:
+        # 提供了两个或更多参数，提示用法
+        print("Usage: python generate_adguard_upstream_from_geosite.py [output.txt]")
+        print(f"Default output is: {DEFAULT_OUTPUT}")
         sys.exit(1)
+    # --- 修复逻辑结束 ---
 
-    output = sys.argv[1]
     rules = defaultdict(set)
+    _self_test() # 在开始拉取网络资源前先进行本地自测
 
     for dns, lists in SOURCES.items():
         for name in lists:
             try:
                 for d in fetch_list(name):
                     rules[dns].add(d)
+            except requests.exceptions.Timeout:
+                print(f"❌ 拉取 {name} 超时，请检查网络连接或稍后重试。")
+                continue
+            except requests.exceptions.RequestException as e:
+                print(f"❌ 无法拉取 {name}: {e}")
+                continue
             except Exception as e:
-                print(f"⚠ 无法拉取 {name}: {e}")
+                print(f"⚠ 处理 {name} 时发生未知错误: {e}")
+                continue
 
     domain_count = 0
+    # 使用 'w' 模式打开文件，写入结果
     with open(output, "w", encoding="utf-8") as f:
+        # 遍历规则字典，按 DNS 服务器分组写入 AdGuard Home 格式
+        # 格式: [/<domain>/]<IP>
         for dns, domains in rules.items():
             for d in sorted(domains):
-                f.write(f"[/{d}/]{dns}
-")
-                domain_count += 1
-
-    # 生成统计信息（供 README 使用）
-    from datetime import datetime, timezone
+                # 检查 domain 是否为空，避免写入空规则
+                if d:
+                    f.write(f"[/{d}/]{dns}\n")
+                    domain_count += 1
+    
+    # 统计信息写入 'stats.json'
+    # 这一部分也从原代码复制过来，并确保 datetime/timezone 导入
     with open("stats.json", "w", encoding="utf-8") as s:
         s.write(
-            '{
-'
-            f'  "domains": {domain_count},
-'
-            f'  "updated": "{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-'
-            '}
-'
+            '{\n'
+            f'  "domains": {domain_count},\n'
+            f'  "updated": "{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"\n'
+            '}\n'
         )
 
-    print(f"✔ 已生成 {output}（{domain_count} domains）")
+    print(f"🎉 已成功生成 {output}（包含 {domain_count} 条域名规则）")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"\n致命错误: {e}")
+        sys.exit(1)
