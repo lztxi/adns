@@ -119,7 +119,7 @@ def main():
     with open(output, "w", encoding="utf-8") as f:
         for dns, domains in rules.items():
             for d in sorted(domains):
-                f.write(f"[/{d}/]{dns}\n")
+                f.write(f"[/{d}/]{dns}
 ")
                 domain_count += 1
 
