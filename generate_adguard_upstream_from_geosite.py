@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-根据 **在线 domain-list-community（文本版）** 生成 AdGuard Home upstream_dns_file。
-
 🚫 已彻底移除：
 - geosite.proto
 - protobuf
@@ -123,6 +121,7 @@ def main():
             for d in sorted(domains):
                 f.write(f"[/{d}/]{dns}
 ")
+")
                 domain_count += 1
 
     # 生成统计信息（供 README 使用）
@@ -144,4 +143,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
