@@ -1,35 +1,28 @@
-# 1. 优化 Release body，加入统计信息
-# 2. 确保 'latest' tag 始终指向最新 Release
-# 3. 失败自动终止 (已通过默认的 fail-fast 实现)
-# 4. 支持手动 / 定时触发 (已实现)
+# ================= GitHub Actions（自动生成 + Release · 专业版） =================
+# 功能：
+# 1. 内容未变化则不发布 Release（避免刷版本）
+# 2. 固定 latest tag，方便订阅
+# 3. 失败自动终止，不产出脏 Release
+# 4. 支持手动 / 定时触发
 
 name: Build AdGuard Upstream DNS (Pro)
 
-# 给予写入权限，用于创建 Release 和推送 .last_checksum 文件
+
 permissions:
   contents: write
 
 on:
-  # 允许手动触发
   workflow_dispatch:
-  # 每天 UTC 03:00 自动触发
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 3 * * *"   # 每天 UTC 03:00
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 确保任何一步失败，整个 Job 立即终止（默认行为，但此处确认）
-    # defaults:
-    #   run:
-    #     shell: bash
 
     steps:
       - name: Checkout repository
-        # 深度为 0，拉取所有历史，以便后续的 git commit 和 push 正常工作
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,101 +32,54 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      # ----------------------------------------------------
-      # 核心构建步骤
-      # ----------------------------------------------------
-      - name: Generate upstream_dns.txt and stats.json
-        # 确保 Python 脚本在失败时会立即终止 Actions
+      - name: Generate upstream_dns.txt
         run: python generate_adguard_upstream_from_geosite.py upstream_dns.txt
 
-      - name: Calculate new checksum
+      - name: Calculate checksum
         id: checksum
         run: |
           sha256sum upstream_dns.txt | awk '{print $1}' > checksum.txt
-          NEW_HASH=$(cat checksum.txt)
-          echo "hash=$NEW_HASH" >> "$GITHUB_OUTPUT"
-          echo "Calculated new checksum: $NEW_HASH"
+          echo "hash=$(cat checksum.txt)" >> $GITHUB_OUTPUT
 
       - name: Get previous checksum
         id: prev
         run: |
-          # 尝试从 Git 历史中恢复上一次的 checksum 文件
-          if git cat-file -e HEAD:.last_checksum 2>/dev/null; then
-            # 文件存在于 HEAD，读取其内容
-            PREV_HASH=$(git show HEAD:.last_checksum)
-            echo "hash=$PREV_HASH" >> "$GITHUB_OUTPUT"
-            echo "Previous checksum: $PREV_HASH"
+          if [ -f .last_checksum ]; then
+            echo "hash=$(cat .last_checksum)" >> $GITHUB_OUTPUT
           else
-            # 文件不存在（首次运行），使用默认值
-            echo "hash=none" >> "$GITHUB_OUTPUT"
-            echo "Previous checksum: none (first run)"
+            echo "hash=none" >> $GITHUB_OUTPUT
           fi
 
-      - name: Check for changes and Exit
-        # 检查新旧 hash 是否相同，如果相同，跳过后续步骤
+      - name: Stop if no change
         if: steps.checksum.outputs.hash == steps.prev.outputs.hash
         run: |
-          echo "✅ No changes detected in upstream_dns.txt. Skipping Release update."
-          exit 0 # 终止 Job
+          echo "No changes detected, skipping release."
+          exit 0
 
-      # ----------------------------------------------------
-      # 发生变化时才执行以下步骤
-      # ----------------------------------------------------
+      - name: Save new checksum
+        run: echo "${{ steps.checksum.outputs.hash }}" > .last_checksum
 
-      - name: Load statistics for Release Body
-        id: stats
+      - name: Commit checksum
         run: |
-          # 从 stats.json 中提取 domains 和 updated 时间
-          DOMAINS=$(cat stats.json | jq -r '.domains')
-          UPDATED=$(cat stats.json | jq -r '.updated')
-          echo "domains=$DOMAINS" >> "$GITHUB_OUTPUT"
-          echo "updated=$UPDATED" >> "$GITHUB_OUTPUT"
-          
-      - name: Save and Commit new checksum
-        run: |
-          # 1. 写入新的 checksum
-          echo "${{ steps.checksum.outputs.hash }}" > .last_checksum
-          
-          # 2. 配置 Git
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # 3. 提交 .last_checksum
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
           git add .last_checksum
-          # 使用 --allow-empty 确保在 .last_checksum 文件内容不变的情况下不失败，但我们已经通过 hash 检查确保了文件内容改变。
-          # '|| true' 确保如果文件未更改 (理论上不会发生)，不会让 action 失败。
-          git commit -m "chore: update checksum to ${{ steps.checksum.outputs.hash }}" || true 
-          
-          # 4. 推送变更
-          git push
+          git commit -m "chore: update checksum" || true
+          git push || true
 
       - name: Create / Update Release (latest)
         uses: softprops/action-gh-release@v2
         with:
-          # 固定 tag 为 'latest'
           tag_name: latest
-          name: "AdGuard Upstream DNS (Latest Build: ${{ steps.stats.outputs.updated }})"
+          name: "AdGuard Upstream DNS (Latest)"
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
           body: |
-            ## 自动构建更新
-            
-            此文件是根据 v2fly/domain-list-community 规则自动生成的 AdGuard Home 自定义上游 DNS 列表。
-            
-            **文件内容统计:**
-            * **域名数量:** ${{ steps.stats.outputs.domains }}
-            * **更新时间:** ${{ steps.stats.outputs.updated }}
-            
-            ---
-            
-            ### 如何使用？
-            将以下链接添加到 AdGuard Home 配置中的 "自定义上游 DNS" 文件订阅功能：
-            `https://github.com/${{ github.repository }}/releases/latest/download/upstream_dns.txt`
-
+            自动生成的 AdGuard Home upstream_dns_file
+            构建编号：${{ github.run_number }}
           files: |
             upstream_dns.txt
-            checksum.txt # 附加 checksum 文件方便用户校验
-            stats.json   # 附加 stats 文件方便用户查看统计信息
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
