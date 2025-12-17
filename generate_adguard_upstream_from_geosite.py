@@ -1,20 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-✅ 新方案（更稳）：
-- 直接使用 v2fly/domain-list-community 的 **文本规则**
-- 不再依赖任何 protobuf / proto 文件
-- GitHub Raw，长期稳定，不会 404
-
-规则：
-- 腾讯系        -> 腾讯 DNS
-- 字节系        -> 字节 DNS
-- 阿里系        -> 阿里 DNS
-- 百度系        -> 百度 DNS
-- 小米 / OPPO   -> 各自 DNS
-- Apple 中国    -> 阿里 DNS
-- 中国大陆兜底  -> 202.98.0.68
-
 依赖：
   pip install requests
 """
@@ -110,8 +96,9 @@ def main():
     with open(output, "w", encoding="utf-8") as f:
         for dns, domains in rules.items():
             for d in sorted(domains):
-                f.write(f"[/{d}/]{dns}
-")
+                line = f"[/{d}/]{dns}
+"
+                f.write(line)
                 domain_count += 1
 
     # 生成统计信息（供 README 使用）
