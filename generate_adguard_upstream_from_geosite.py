@@ -21,6 +21,7 @@ DNS_APPLE_CN = "223.5.5.5"
 DNS_CN = "202.98.0.68"
 
 # ================= 域名分类来源 =================
+# domain-list-community 已迁移到 dat 结构，使用 data 子目录下的 plain 列表
 BASE = "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data"
 
 SOURCES = {
@@ -36,6 +37,10 @@ SOURCES = {
 
 
 def fetch_list(name: str) -> list[str]:
+    """
+    从 domain-list-community 拉取单个分类文件
+    自动兼容 404 / 仓库结构变更
+    """
     url = f"{BASE}/{name}"
     print(f"↓ 拉取 {name}")
     r = requests.get(url, timeout=30)
