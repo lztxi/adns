@@ -7,7 +7,6 @@
 
 name: Build AdGuard Upstream DNS (Pro)
 
-
 permissions:
   contents: write
 
@@ -82,4 +81,3 @@ jobs:
             upstream_dns.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
