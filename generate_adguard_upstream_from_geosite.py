@@ -60,13 +60,12 @@ def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: python generate_adguard_upstream_from_geosite.py output.txt")
         sys.exit(1)
-        
-    if domain_count == 0:
-        print("❌ 未生成任何域名（上游源可能失效），终止流程")
-        sys.exit(2)
 
     output = sys.argv[1]
     rules: dict[str, set[str]] = defaultdict(set)
+
+    # 统计域名数量（必须在所有逻辑之前初始化）
+    domain_count = 0
 
     for dns, lists in SOURCES.items():
         for name in lists:
