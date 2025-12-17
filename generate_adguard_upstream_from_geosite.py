@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-依赖：
-  pip install requests
+根据在线 domain-list-community 生成 AdGuard Home upstream_dns_file
+并输出统计信息供 README / CI 使用
 """
 
 import sys
 import requests
 from collections import defaultdict
-from typing import List
+from datetime import datetime, timezone
 
 # ================= DNS 定义 =================
 DNS_TENCENT = "119.29.29.29"
@@ -34,20 +34,16 @@ SOURCES = {
     DNS_CN: ["cn", "geolocation-cn"],
 }
 
-DEFAULT_OUTPUT = "upstream_dns.txt"
 
-# ================= 工具函数 =================
-
-def fetch_list(name: str) -> List[str]:
-    """从 domain-list-community 拉取单个分类的 domain: 规则"""
+def fetch_list(name: str) -> list[str]:
     url = f"{BASE}/{name}"
     print(f"↓ 拉取 {name}")
     r = requests.get(url, timeout=30)
     r.raise_for_status()
 
-    domains: List[str] = []
-    for line in r.text.splitlines():
-        line = line.strip()
+    domains: list[str] = []
+    for raw in r.text.splitlines():
+        line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("domain:"):
@@ -55,34 +51,13 @@ def fetch_list(name: str) -> List[str]:
     return domains
 
 
-# ================= 简单自测 =================
-
-def _self_test():
-    """不访问网络的最小自测，确保格式正确"""
-    sample = {
-        DNS_TENCENT: {"qq.com", "weixin.qq.com"},
-        DNS_CN: {"jd.com"},
-    }
-
-    lines = []
-    for dns, domains in sample.items():
-        for d in sorted(domains):
-            lines.append(f"[/{d}/]{dns}")
-
-    assert "[/qq.com/]119.29.29.29" in lines
-    assert "[/jd.com/]202.98.0.68" in lines
-    print("✔ 自测通过")
-
-
-# ================= 主逻辑 =================
-
-def main():
+def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: python generate_adguard_upstream_from_geosite.py output.txt")
         sys.exit(1)
 
     output = sys.argv[1]
-    rules = defaultdict(set)
+    rules: dict[str, set[str]] = defaultdict(set)
 
     for dns, lists in SOURCES.items():
         for name in lists:
@@ -93,26 +68,27 @@ def main():
                 print(f"⚠ 无法拉取 {name}: {e}")
 
     domain_count = 0
+
+    # ===== 生成 upstream_dns.txt =====
     with open(output, "w", encoding="utf-8") as f:
         for dns, domains in rules.items():
             for d in sorted(domains):
-                line = f"[/{d}/]{dns}
-"
+                line = "[/" + d + "/]" + dns + "\n"
                 f.write(line)
                 domain_count += 1
 
-    # 生成统计信息（供 README 使用）
-    from datetime import datetime, timezone
+    # ===== 生成统计信息 =====
+    stats = {
+        "domains": domain_count,
+        "updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    }
+
     with open("stats.json", "w", encoding="utf-8") as s:
         s.write(
-            '{
-'
-            f'  "domains": {domain_count},
-'
-            f'  "updated": "{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-'
-            '}
-'
+            "{\n"
+            f"  \"domains\": {stats['domains']},\n"
+            f"  \"updated\": \"{stats['updated']}\"\n"
+            "}\n"
         )
 
     print(f"✔ 已生成 {output}（{domain_count} domains）")
