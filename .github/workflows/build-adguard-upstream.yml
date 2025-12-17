@@ -1,91 +1,49 @@
-# ================= GitHub Actions（自动生成 + Release · 专业版） =================
-# 功能：
-# 1. 内容未变化则不发布 Release（避免刷版本）
-# 2. 固定 latest tag，方便订阅
-# 3. 失败自动终止，不产出脏 Release
-# 4. 支持手动 / 定时触发
-
-name: Build AdGuard Upstream DNS (Pro)
-
-permissions:
-  contents: write
+name: Build AdGuard Upstream DNS
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * *"   # 每天 UTC 03:00
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
-      - name: Install dependencies
-        run: pip install requests
+      - name: Download geosite.dat
+        run: |
+          curl -L -o geosite.dat \
+            https://github.com/v2fly/domain-list-community/releases/latest/download/geosite.dat
+          test -s geosite.dat
 
       - name: Generate upstream_dns.txt
-        run: python generate_adguard_upstream_from_geosite.py upstream_dns.txt
-
-      - name: Calculate checksum
-        id: checksum
         run: |
-          sha256sum upstream_dns.txt | awk '{print $1}' > checksum.txt
-          echo "hash=$(cat checksum.txt)" >> $GITHUB_OUTPUT
-
-      - name: Get previous checksum
-        id: prev
-        run: |
-          if [ -f .last_checksum ]; then
-            echo "hash=$(cat .last_checksum)" >> $GITHUB_OUTPUT
-          else
-            echo "hash=none" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Stop if no change
-        if: steps.checksum.outputs.hash == steps.prev.outputs.hash
-        run: |
-          echo "No changes detected, skipping release."
-          exit 0
-
-      - name: Save new checksum
-        run: echo "${{ steps.checksum.outputs.hash }}" > .last_checksum
-
-      - name: Commit checksum
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add .last_checksum
-          git commit -m "chore: update checksum" || true
-          git push || true
+          python generate_adguard_upstream_from_geosite.py geosite.dat upstream_dns.txt
 
       - name: Check upstream file not empty
         run: |
           if [ ! -s upstream_dns.txt ]; then
-          echo "❌ upstream_dns.txt is empty, abort release"
-          exit 1
+            echo "upstream_dns.txt is empty, abort release"
+            exit 1
           fi
-
 
       - name: Create / Update Release (latest)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "AdGuard Upstream DNS (Latest)"
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: true
+          name: AdGuard Upstream DNS (Latest)
+          files: upstream_dns.txt
           body: |
             自动生成的 AdGuard Home upstream_dns_file
-            构建编号：${{ github.run_number }}
-          files: |
-            upstream_dns.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
