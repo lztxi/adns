@@ -23,7 +23,7 @@ jobs:
       - name: Download geosite.dat
         run: |
           curl -L -o geosite.dat \
-            https://github.com/v2fly/domain-list-community/releases/latest/download/geosite.dat
+            https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat
           test -s geosite.dat
 
       - name: Generate upstream_dns.txt
