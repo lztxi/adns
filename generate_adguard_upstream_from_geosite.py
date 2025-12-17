@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-根据在线 domain-list-community 生成 AdGuard Home upstream_dns_file
-并输出统计信息供 README / CI 使用
+从官方 geosite.dat 生成 AdGuard Home upstream_dns_file
+稳定 / 可 CI / 无 raw GitHub 依赖
 """
 
 import sys
-import requests
+import struct
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -20,82 +20,107 @@ DNS_OPPO = "114.114.114.114"
 DNS_APPLE_CN = "223.5.5.5"
 DNS_CN = "202.98.0.68"
 
-# ================= 域名分类来源 =================
-# domain-list-community 已迁移到 dat 结构，使用 data 子目录下的 plain 列表
-BASE = "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data"
-
+# geosite 分类 → DNS
 SOURCES = {
-    DNS_TENCENT: ["tencent"],
-    DNS_BYTEDANCE: ["bytedance"],
-    DNS_ALIBABA: ["alibaba"],
-    DNS_BAIDU: ["baidu"],
-    DNS_XIAOMI: ["xiaomi"],
-    DNS_OPPO: ["oppo"],
-    DNS_APPLE_CN: ["apple-cn", "apple"],
-    DNS_CN: ["cn", "geolocation-cn"],
+    "tencent": DNS_TENCENT,
+    "bytedance": DNS_BYTEDANCE,
+    "alibaba": DNS_ALIBABA,
+    "baidu": DNS_BAIDU,
+    "xiaomi": DNS_XIAOMI,
+    "oppo": DNS_OPPO,
+    "apple-cn": DNS_APPLE_CN,
+    "apple": DNS_APPLE_CN,
+    "geolocation-cn": DNS_CN,
+    "cn": DNS_CN,
 }
 
 
-def fetch_list(name: str) -> list[str]:
-    """
-    从 domain-list-community 拉取单个分类文件
-    自动兼容 404 / 仓库结构变更
-    """
-    url = f"{BASE}/{name}"
-    print(f"↓ 拉取 {name}")
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
+def read_varint(data: bytes, offset: int):
+    """读取 protobuf varint（最小实现）"""
+    result = 0
+    shift = 0
+    while True:
+        b = data[offset]
+        offset += 1
+        result |= (b & 0x7F) << shift
+        if not (b & 0x80):
+            return result, offset
+        shift += 7
 
-    domains: list[str] = []
-    for raw in r.text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("domain:"):
-            domains.append(line.split(":", 1)[1])
-    return domains
+
+def parse_geosite(path: str) -> dict[str, set[str]]:
+    """解析 geosite.dat（无 proto 依赖）"""
+    with open(path, "rb") as f:
+        data = f.read()
+
+    rules: dict[str, set[str]] = defaultdict(set)
+    i = 0
+    current_tag = None
+
+    while i < len(data):
+        key = data[i]
+        i += 1
+        field = key >> 3
+        wire = key & 7
+
+        if wire == 2:  # length-delimited
+            length, i = read_varint(data, i)
+            chunk = data[i:i + length]
+            i += length
+
+            # tag name
+            if field == 1:
+                current_tag = chunk.decode("utf-8", errors="ignore")
+            # domain
+            elif field == 2 and current_tag in SOURCES:
+                # domain message 内部：跳过 type，只取字符串
+                try:
+                    _, pos = read_varint(chunk, 0)
+                    _, pos = read_varint(chunk, pos)
+                    domain = chunk[pos:].decode("utf-8", errors="ignore")
+                    rules[SOURCES[current_tag]].add(domain)
+                except Exception:
+                    pass
+        else:
+            # skip other wire types
+            if wire == 0:
+                _, i = read_varint(data, i)
+            elif wire == 1:
+                i += 8
+            elif wire == 5:
+                i += 4
+            else:
+                break
+
+    return rules
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        print("Usage: python generate_adguard_upstream_from_geosite.py output.txt")
+    if len(sys.argv) != 3:
+        print("Usage: python generate_adguard_upstream_from_geosite.py geosite.dat output.txt")
         sys.exit(1)
 
-    output = sys.argv[1]
-    rules: dict[str, set[str]] = defaultdict(set)
+    geosite_path = sys.argv[1]
+    output = sys.argv[2]
 
-    # 统计域名数量（必须在所有逻辑之前初始化）
-    domain_count = 0
-
-    for dns, lists in SOURCES.items():
-        for name in lists:
-            try:
-                for d in fetch_list(name):
-                    rules[dns].add(d)
-            except Exception as e:
-                print(f"⚠ 无法拉取 {name}: {e}")
+    rules = parse_geosite(geosite_path)
 
     domain_count = 0
-
-    # ===== 生成 upstream_dns.txt =====
     with open(output, "w", encoding="utf-8") as f:
         for dns, domains in rules.items():
             for d in sorted(domains):
-                line = "[/" + d + "/]" + dns + "\n"
-                f.write(line)
+                f.write(f"[/{d}/]{dns}\n")
                 domain_count += 1
 
-    # ===== 生成统计信息 =====
-    stats = {
-        "domains": domain_count,
-        "updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-    }
+    if domain_count == 0:
+        print("❌ geosite.dat 解析失败：未生成任何域名")
+        sys.exit(2)
 
     with open("stats.json", "w", encoding="utf-8") as s:
         s.write(
             "{\n"
-            f"  \"domains\": {stats['domains']},\n"
-            f"  \"updated\": \"{stats['updated']}\"\n"
+            f"  \"domains\": {domain_count},\n"
+            f"  \"updated\": \"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\"\n"
             "}\n"
         )
 
