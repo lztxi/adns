@@ -66,6 +66,14 @@ jobs:
           git commit -m "chore: update checksum" || true
           git push || true
 
+      - name: Check upstream file not empty
+        run: |
+          if [ ! -s upstream_dns.txt ]; then
+          echo "❌ upstream_dns.txt is empty, abort release"
+          exit 1
+          fi
+
+
       - name: Create / Update Release (latest)
         uses: softprops/action-gh-release@v2
         with:
