@@ -48,9 +48,23 @@ jobs:
           git commit -m "Auto update: upstream_dns.txt & README $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
           git push origin dev --force-with-lease
 
-      - name: 清理旧 Actions 运行记录（保留最近5次）
-        uses: actions/delete-workflow-runs@v4
+      - name: 清理旧 Actions 运行记录（保留最近10次）
+        uses: actions/github-script@v7
         with:
-          repository: ${{ github.repository }}
-          workflow: generate.yml
-          keep_minimum_runs: 5
+          script: |
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'generate.yml',
+              per_page: 100
+            });
+            const keep = 10;
+            const toDelete = runs.data.workflow_runs.slice(keep);
+            for (const run of toDelete) {
+              await github.rest.actions.deleteWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id
+              });
+              console.log(`Deleted run ${run.id}`);
+            }
