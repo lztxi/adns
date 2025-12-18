@@ -2,17 +2,15 @@ import requests
 import os
 from datetime import datetime
 
-# DoH 配置（优先使用 DoH）
-DOH_DNS = {
-    'tencent': 'https://doh.pub/dns-query',          # 腾讯公共 DoH
-    'bytedance': '180.184.1.1',  # 字节公共 DoH
-    'alibaba': 'https://dns.alidns.com/dns-query'     # 阿里公共 DoH
-}
+# DNS 配置（字节改用 IP）
+TENCENT_DOH = 'https://doh.pub/dns-query'          # 腾讯 DoH
+BYTEDANCE_IP = '180.184.1.1'                       # 字节 IP
+ALIBABA_DOH = 'https://dns.alidns.com/dns-query'   # 阿里 DoH
 
 CATEGORIES = {
-    'tencent': ('腾讯系', DOH_DNS['tencent']),
-    'bytedance': ('字节系', DOH_DNS['bytedance']),
-    'alibaba': ('阿里系', DOH_DNS['alibaba'])
+    'tencent': ('腾讯系', TENCENT_DOH),
+    'bytedance': ('字节系', BYTEDANCE_IP),
+    'alibaba': ('阿里系', ALIBABA_DOH)
 }
 
 BASE_URL = 'https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/'
@@ -29,11 +27,16 @@ def fetch_domains(category):
     domains = set()
     for line in response.text.splitlines():
         line = line.strip()
-        if not line or line.startswith(('#', 'include:', 'regexp:', 'keyword:', 'attr:', 'full:')):
-            continue  # 严格过滤：跳过 include、regexp、keyword 等，只保留纯域名
-        # 兼容 domain: 开头
+        if not line or line.startswith('#'):
+            continue
+        # 关键：跳过所有包含 include: 或 @ 的行（彻底杜绝 @!cn）
+        if 'include:' in line or '@' in line or 'regexp:' in line or 'keyword:' in line:
+            continue
+        # 处理 domain: 开头
         if line.startswith('domain:'):
             domain = line[7:].strip()
+        elif line.startswith('full:'):
+            domain = line[5:].strip()
         else:
             domain = line.strip()
         if domain:
@@ -64,13 +67,13 @@ def generate_upstream_lines(domains, dns_server, max_per_line=50):
         lines.append(f'[{domain_str}]{dns_server}')
     return lines
 
-# 生成内容头部
+# 生成文件头部
 output_lines = [
-    "# AdGuardHome Upstream DNS 文件 - 自动生成（仅三大公司 DoH）",
+    "# AdGuardHome Upstream DNS 文件 - 自动生成",
     f"# 更新时间: {update_time}",
-    f"# 腾讯系域名: {stats.get('tencent', 0)} → {DOH_DNS['tencent']}",
-    f"# 字节系域名: {stats.get('bytedance', 0)} → {DOH_DNS['bytedance']}",
-    f"# 阿里系域名: {stats.get('alibaba', 0)} → {DOH_DNS['alibaba']}",
+    f"# 腾讯系域名: {stats.get('tencent', 0)} → {TENCENT_DOH}",
+    f"# 字节系域名: {stats.get('bytedance', 0)} → {BYTEDANCE_IP}",
+    f"# 阿里系域名: {stats.get('alibaba', 0)} → {ALIBABA_DOH}",
     f"# 总域名数量: {total_domains}",
     f"# 总 upstream 条目: 0（下方计算）",
     ""
@@ -82,7 +85,7 @@ for cat, (_, dns) in CATEGORIES.items():
         lines = generate_upstream_lines(company_domains[cat], dns)
         all_lines_count += len(lines)
         output_lines.extend(lines)
-        output_lines.append("")  # 分隔
+        output_lines.append("")  # 空行分隔
 
 output_lines[6] = f"# 总 upstream 条目: {all_lines_count}"
 
@@ -91,4 +94,4 @@ output_file = 'upstream_dns.txt'
 with open(output_file, 'w', encoding='utf-8') as f:
     f.write('\n'.join(output_lines) + '\n')
 
-print(f"生成完成！共 {all_lines_count} 条 upstream 规则（仅三大公司 DoH），总覆盖 {total_domains} 个域名")
+print(f"生成完成！共 {all_lines_count} 条 upstream 规则，总覆盖 {total_domains} 个域名，无任何 @!cn 或 include")
