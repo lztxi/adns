@@ -57,3 +57,12 @@ jobs:
           git add README.md
           git commit -m "Update stats in README" || echo "无变更"
           git push origin main
+          
+      - name: Remove old Releases
+        uses: dev-drprasad/delete-older-releases@master
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+          with:
+          keep_latest: 3
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
