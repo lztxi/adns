@@ -51,9 +51,9 @@ jobs:
           git push origin dev --force-with-lease
 
       # 可选：如果你还想让 main 的 README 显示统计，可以再加一步（下面注释了）
-      # - name: 更新 main 的 README 并推回 main
-      #   run: |
-      #     git checkout main
-      #     git add README.md
-      #     git commit -m "Update stats in README" || echo "无变更"
-      #     git push origin main
+      - name: 更新 main 的 README 并推回 main
+        run: |
+          git checkout main
+          git add README.md
+          git commit -m "Update stats in README" || echo "无变更"
+          git push origin main
