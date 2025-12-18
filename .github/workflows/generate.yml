@@ -2,30 +2,22 @@ name: Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'  # 每3天运行一次
-  workflow_dispatch:
+    - cron: '0 0 */3 * *'  # 每3天 UTC 0点运行一次
+  workflow_dispatch:       # 支持手动触发
 
 permissions:
-  contents: write
+  contents: write          # 必要权限
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      # 第一步：拉取 main 分支（因为脚本在 main）
-      - name: Checkout main 分支（源码分支）
+      - name: Checkout main 分支（源码在 main）
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      # 第二步：切换到 dev 分支（如果不存在就创建）
-      - name: 设置 dev 分支
-        run: |
-          git checkout -b dev || git checkout dev
-          git pull origin dev || echo "dev 分支新建中"
-
-      # 第三步：安装 Python 和依赖
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -34,35 +26,34 @@ jobs:
       - name: Install requests
         run: pip install requests
 
-      # 第四步：运行脚本生成文件（脚本路径在 main，所以直接跑）
       - name: 生成 upstream_dns.txt
         run: python scripts/generate_upstream.py
 
-      # 第五步：只提交 upstream_dns.txt 到 dev 分支
-      - name: 提交并推送至 dev 分支
+      - name: 切换并设置 dev 分支（创建或更新）
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           
-          git add upstream_dns.txt
+          # 尝试切换到 dev，如果不存在就创建
+          git checkout dev || git checkout -b dev
           
+          # 清理 dev 分支旧文件（只保留 upstream_dns.txt）
+          git rm -f --ignore-unmatch upstream_dns.txt || true
+          
+          # 复制新生成的文件
+          cp ../upstream_dns.txt .  # 因为生成时在 main 工作目录
+          
+          # 添加并提交
+          git add upstream_dns.txt
           git commit -m "Auto update upstream_dns.txt $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
           
+          # 强制推送（dev 只放这个文件，force 安全）
           git push origin dev --force-with-lease
 
-      # 可选：如果你还想让 main 的 README 显示统计，可以再加一步（下面注释了）
-      - name: 更新 main 的 README 并推回 main
-        run: |
-          git checkout main
-          git add README.md
-          git commit -m "Update stats in README" || echo "无变更"
-          git push origin main
-          
-      - name: Remove old Releases
-        uses: dev-drprasad/delete-older-releases@master
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-          with:
-          keep_latest: 3
-          delete_tags: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 可选：如果你想让 main 的 README 显示统计，再打开下面这步
+      # - name: 更新 main 分支 README（如果脚本生成了 README）
+      #   run: |
+      #     git checkout main
+      #     git add README.md
+      #     git commit -m "Update README stats $(date -u +'%Y-%m-%d')" || echo "无变更"
+      #     git push origin main
