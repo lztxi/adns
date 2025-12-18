@@ -2,7 +2,7 @@ name: grok-Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'  # 每3天运行一次
+    - cron: '0 0 */3 * *'
   workflow_dispatch:
 
 jobs:
@@ -13,12 +13,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: dev
+          token: ${{ secrets.GITHUB_TOKEN }}  # 显式使用默认 token
           fetch-depth: 0
 
       - name: 如果 dev 分支不存在，自动创建
         run: |
           if ! git rev-parse --verify dev >/dev/null 2>&1; then
-            echo "dev 分支不存在，基于 main 创建"
+            echo "dev 分支不存在，基于 main 创建并推送"
             git checkout -b dev
             git push origin dev
           fi
@@ -34,22 +35,22 @@ jobs:
       - name: 删除旧文件
         run: rm -f upstream_dns.txt
 
-      - name: 运行生成脚本（带详细日志）
-        run: python scripts/generate_upstream.py || echo "脚本运行出错"
+      - name: 运行生成脚本
+        run: python scripts/generate_upstream.py
 
-      - name: 显示生成的文件内容和大小（调试用）
+      - name: 显示生成结果
         run: |
-          echo "=== upstream_dns.txt 文件大小 ==="
-          ls -lh upstream_dns.txt || echo "文件不存在！"
-          echo "=== 文件前20行内容 ==="
-          head -20 upstream_dns.txt || echo "文件为空或不存在"
+          echo "=== 生成的文件信息 ==="
+          ls -lh upstream_dns.txt
+          echo "=== 前10行预览 ==="
+          head -10 upstream_dns.txt
           echo "=== 总行数 ==="
-          wc -l upstream_dns.txt || echo "无法统计"
+          wc -l upstream_dns.txt
 
-      - name: Commit 并强制推送
+      - name: Commit 并推送
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git add upstream_dns.txt
-          git commit -m "Auto update upstream_dns.txt $(date +'%Y-%m-%d %H:%M:%S')" || echo "Nothing to commit"
-          git push origin dev --force-with-lease || echo "Push failed"
+          git commit -m "Auto update upstream_dns.txt $(date +'%Y-%m-%d %H:%M:%S')" || echo "无变更"
+          git push origin dev || git push origin dev --force-with-lease || echo "推送失败，请检查权限"
