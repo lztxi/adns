@@ -6,7 +6,7 @@ from datetime import datetime
 TENCENT_DNS = 'https://doh.pub/dns-query'          # 腾讯 DoH
 BYTEDANCE_DNS = '180.184.1.1'                      # 字节 IP
 ALIBABA_DNS = 'https://dns.alidns.com/dns-query'   # 阿里 DoH
-FALLBACK_DNS = '202.98.0.68'                       # 兜底 DNS（其他所有域名）
+FALLBACK_DNS = '202.98.0.68'                       # 兜底
 
 CATEGORIES = {
     'tencent': ('腾讯系', TENCENT_DNS),
@@ -27,16 +27,31 @@ def fetch_domains(category):
     
     domains = set()
     for line in response.text.splitlines():
-        line = line.strip()
-        # 彻底过滤所有非纯域名行（include、@!cn、regexp 等全跳过）
-        if not line or line.startswith(('#', 'include:', 'regexp:', 'keyword:', 'attr:', 'full:', 'domain:', '@')):
+        original_line = line.strip()
+        if not original_line:
             continue
-        domain = line.strip().lower()
-        if domain and '.' in domain:  # 确保是有效域名
-            domains.add(domain)
+        
+        # 彻底跳过所有带 @ 或 include: 的行（@!cn 再见！！！）
+        if '@' in original_line or original_line.startswith('include:'):
+            continue
+        
+        # 跳过注释和其它特殊行
+        if original_line.startswith(('#', 'regexp:', 'keyword:', 'attr:', 'full:')):
+            continue
+        
+        # 处理 domain: 开头
+        if original_line.startswith('domain:'):
+            domain = original_line[7:].strip()
+        else:
+            domain = original_line.strip()
+        
+        # 只加纯域名（有.且不为空）
+        if domain and '.' in domain and not domain.startswith('.'):
+            domains.add(domain.lower())
+    
     return domains
 
-print("开始下载三大公司域名列表...")
+print("开始下载三大公司域名列表（已彻底过滤 @!cn 和 include）...")
 company_domains = {}
 total_domains = 0
 stats = {}
@@ -60,9 +75,8 @@ def generate_upstream_lines(domains, dns_server, max_per_line=50):
         lines.append(f'[{domain_str}]{dns_server}')
     return lines
 
-# 生成内容
 output_lines = [
-    "# AdGuardHome Upstream DNS 文件 - 自动生成",
+    "# AdGuardHome Upstream DNS 文件 - 自动生成（已彻底清除 @!cn）",
     f"# 更新时间: {update_time}",
     f"# 腾讯系: {stats.get('tencent', 0)} 域名 → DoH {TENCENT_DNS}",
     f"# 字节系: {stats.get('bytedance', 0)} 域名 → IP {BYTEDANCE_DNS}",
@@ -75,7 +89,7 @@ output_lines = [
 
 all_lines_count = 0
 
-# 先添加三大公司规则（优先级高）
+# 三大公司规则
 for cat, (_, dns) in CATEGORIES.items():
     if company_domains[cat]:
         lines = generate_upstream_lines(company_domains[cat], dns)
@@ -83,15 +97,14 @@ for cat, (_, dns) in CATEGORIES.items():
         output_lines.extend(lines)
         output_lines.append("")
 
-# 最后加兜底规则（所有剩余域名）
-output_lines.append(f"# 兜底：不在以上规则的域名走这个 DNS")
-output_lines.append(f'[/./]{FALLBACK_DNS}')  # [/./] 表示所有域名
+# 兜底规则
+output_lines.append(f"# 兜底：所有剩余域名")
+output_lines.append(f'[/./]{FALLBACK_DNS}')
 all_lines_count += 1
 
 output_lines[7] = f"# 总 upstream 条目: {all_lines_count}"
 
-# 写入文件
 with open('upstream_dns.txt', 'w', encoding='utf-8') as f:
     f.write('\n'.join(output_lines) + '\n')
 
-print(f"生成完成！三大公司 {total_domains} 个域名 + 1 条兜底规则，共 {all_lines_count} 条")
+print(f"生成成功！已彻底清除所有 @!cn 和 include，共 {all_lines_count} 条规则")
