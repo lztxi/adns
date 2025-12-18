@@ -2,9 +2,9 @@ import requests
 import os
 
 # Define DNS servers
-TENCENT_DNS = '119.29.29.29'
+TENCENT_DNS = 'https://doh.pub/dns-query'
 BYTEDANCE_DNS = '180.184.1.1'
-ALIBABA_DNS = '223.5.5.5'
+ALIBABA_DNS = 'h3://dns.alidns.com/dns-query'
 CN_DNS = '202.98.0.68'
 
 # Base URL for domain lists
