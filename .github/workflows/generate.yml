@@ -2,21 +2,20 @@ name: Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'  # 每3天 UTC 0点运行一次
-  workflow_dispatch:       # 支持手动触发
+    - cron: '0 0 */3 * *'  # 每3天运行一次
+  workflow_dispatch:
 
 permissions:
-  contents: write          # 必要权限
+  contents: write
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main 分支（源码在 main）
+      - name: Checkout main 分支（源码分支）
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,34 +25,23 @@ jobs:
       - name: Install requests
         run: pip install requests
 
-      - name: 生成 upstream_dns.txt
+      - name: 生成 upstream_dns.txt（在 main 分支）
         run: python scripts/generate_upstream.py
 
-      - name: 切换并设置 dev 分支（创建或更新）
+      - name: 推送 upstream_dns.txt 到 dev 分支（强制覆盖）
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           
-          # 尝试切换到 dev，如果不存在就创建
+          # 强制切换到 dev 分支（如果不存在就创建）
           git checkout dev || git checkout -b dev
           
-          # 清理 dev 分支旧文件（只保留 upstream_dns.txt）
-          git rm -f --ignore-unmatch upstream_dns.txt || true
+          # 直接复制覆盖（不管原来有没有）
+          cp ../upstream_dns.txt upstream_dns.txt
           
-          # 复制新生成的文件
-          cp ../upstream_dns.txt .  # 因为生成时在 main 工作目录
-          
-          # 添加并提交
+          # 添加、提交、强制推送
           git add upstream_dns.txt
           git commit -m "Auto update upstream_dns.txt $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
-          
-          # 强制推送（dev 只放这个文件，force 安全）
           git push origin dev --force-with-lease
 
-      # 可选：如果你想让 main 的 README 显示统计，再打开下面这步
-      # - name: 更新 main 分支 README（如果脚本生成了 README）
-      #   run: |
-      #     git checkout main
-      #     git add README.md
-      #     git commit -m "Update README stats $(date -u +'%Y-%m-%d')" || echo "无变更"
-      #     git push origin main
+          echo "dev 分支 upstream_dns.txt 更新成功！"
