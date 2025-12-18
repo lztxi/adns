@@ -6,33 +6,26 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # 只需写权限
+  contents: write
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout dev 分支
+      # 第一步：拉取 main 分支（因为脚本在 main）
+      - name: Checkout main 分支（源码分支）
         uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: main
           fetch-depth: 0
 
-      - name: 如果是第一次运行，创建 dev 分支
+      # 第二步：切换到 dev 分支（如果不存在就创建）
+      - name: 设置 dev 分支
         run: |
-          if ! git rev-parse --verify dev >/dev/null 2>&1; then
-            git checkout -b dev
-            git push origin dev
-          fi
+          git checkout -b dev || git checkout dev
+          git pull origin dev || echo "dev 分支新建中"
 
-      - name: 超级清理：删除所有旧文件，只保留必要结构
-        run: |
-          # 删除根目录下所有文件和文件夹（除了 .git）
-          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
-          
-          # 重新创建必要文件夹
-          mkdir -p scripts .github/workflows
-
+      # 第三步：安装 Python 和依赖
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -41,21 +34,26 @@ jobs:
       - name: Install requests
         run: pip install requests
 
-      - name: 重新添加脚本和 workflow 文件
-        run: |
-          # 这里假设你已经把最新脚本和 workflow 提交到仓库了
-          # Actions 会从远程拉取最新代码，所以不用手动复制
-
-      - name: 运行生成脚本（生成 upstream_dns.txt + 更新 README.md）
+      # 第四步：运行脚本生成文件（脚本路径在 main，所以直接跑）
+      - name: 生成 upstream_dns.txt
         run: python scripts/generate_upstream.py
 
-      - name: 提交并强制推送（保持分支干净）
+      # 第五步：只提交 upstream_dns.txt 到 dev 分支
+      - name: 提交并推送至 dev 分支
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           
-          git add upstream_dns.txt README.md scripts/generate_upstream.py .github/workflows/generate.yml
+          git add upstream_dns.txt
           
-          git commit -m "Auto clean & update: $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
+          git commit -m "Auto update upstream_dns.txt $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
           
           git push origin dev --force-with-lease
+
+      # 可选：如果你还想让 main 的 README 显示统计，可以再加一步（下面注释了）
+      # - name: 更新 main 的 README 并推回 main
+      #   run: |
+      #     git checkout main
+      #     git add README.md
+      #     git commit -m "Update stats in README" || echo "无变更"
+      #     git push origin main
