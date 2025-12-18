@@ -1,54 +1,68 @@
 import requests
 import os
+from datetime import datetime
+import re
 
-# Define DNS servers
+# DNS 配置
 TENCENT_DNS = 'https://doh.pub/dns-query'
 BYTEDANCE_DNS = '180.184.1.1'
 ALIBABA_DNS = 'h3://dns.alidns.com/dns-query'
 CN_DNS = '202.98.0.68'
 
-# Base URL for domain lists
 BASE_URL = 'https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/'
 
-# Categories to fetch
 CATEGORIES = {
-    'tencent': TENCENT_DNS,
-    'bytedance': BYTEDANCE_DNS,
-    'alibaba': ALIBABA_DNS
+    'tencent': ('腾讯系', TENCENT_DNS),
+    'bytedance': ('字节系', BYTEDANCE_DNS),
+    'alibaba': ('阿里系', ALIBABA_DNS)
 }
 
-# Function to fetch and parse domain list (ignoring comments and attributes)
 def fetch_domains(category):
     url = f'{BASE_URL}{category}'
-    response = requests.get(url)
-    response.raise_for_status()
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"下载 {category} 失败: {e}")
+        return set()
+    
     domains = set()
     for line in response.text.splitlines():
         line = line.strip()
-        if not line or line.startswith('#') or line.startswith('regexp:') or line.startswith('keyword:'):
-            continue  # Skip comments, regex, keywords; only full domains
+        if not line or line.startswith(('#', 'regexp:', 'keyword:')):
+            continue
         if line.startswith('full:'):
             domain = line.split('full:', 1)[1].strip()
+        elif line.startswith('domain:'):
+            domain = line.split('domain:', 1)[1].strip()
         else:
             domain = line.strip()
-        domains.add(domain)
+        if domain:
+            domains.add(domain.lower())  # 统一小写
     return domains
 
-# Fetch specific company domains
+print("开始下载域名列表...")
 company_domains = {}
-for cat, dns in CATEGORIES.items():
-    print(f'Fetching {cat} domains...')
-    company_domains[cat] = fetch_domains(cat)
+total_company = 0
+stats = {}
 
-# Fetch CN domains
-print('Fetching CN domains...')
+for cat, (name, _) in CATEGORIES.items():
+    domains = fetch_domains(cat)
+    company_domains[cat] = domains
+    count = len(domains)
+    total_company += count
+    stats[cat] = count
+    print(f"{name} 域名数量: {count}")
+
 cn_domains = fetch_domains('cn')
+for domains in company_domains.values():
+    cn_domains -= domains  # 去重，避免公司域名重复走 CN DNS
+cn_count = len(cn_domains)
+stats['cn'] = cn_count
+print(f"中国大陆其他域名数量: {cn_count}")
 
-# Remove company-specific domains from general CN to avoid overlap
-for cat_domains in company_domains.values():
-    cn_domains -= cat_domains
+update_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
 
-# Function to generate upstream lines, grouping domains (max 50 per line)
 def generate_upstream_lines(domains, dns_server, max_per_line=50):
     lines = []
     domain_list = sorted(domains)
@@ -58,21 +72,66 @@ def generate_upstream_lines(domains, dns_server, max_per_line=50):
         lines.append(f'[{domain_str}]{dns_server}')
     return lines
 
-# Generate the file content
-output_lines = []
+# 生成 upstream_dns.txt 内容
+output_lines = [
+    "# AdGuardHome Upstream DNS 文件 - 自动生成",
+    f"# 更新时间: {update_time}",
+    f"# 腾讯系域名: {stats.get('tencent', 0)}",
+    f"# 字节系域名: {stats.get('bytedance', 0)}",
+    f"# 阿里系域名: {stats.get('alibaba', 0)}",
+    f"# 中国大陆其他域名: {cn_count}",
+    f"# 总域名数量: {total_company + cn_count}",
+    f"# 总 upstream 条目: 0（下方计算）",
+    ""
+]
 
-# Add company-specific first (higher priority)
-for cat, dns in CATEGORIES.items():
+all_lines_count = 0
+for cat, (_, dns) in CATEGORIES.items():
     if company_domains[cat]:
-        output_lines.extend(generate_upstream_lines(company_domains[cat], dns))
+        lines = generate_upstream_lines(company_domains[cat], dns)
+        all_lines_count += len(lines)
+        output_lines.extend(lines)
+        output_lines.append("")
 
-# Add general CN last
 if cn_domains:
-    output_lines.extend(generate_upstream_lines(cn_domains, CN_DNS))
+    lines = generate_upstream_lines(cn_domains, CN_DNS)
+    all_lines_count += len(lines)
+    output_lines.extend(lines)
 
-# Write to file
+output_lines[7] = f"# 总 upstream 条目: {all_lines_count}"
+
 output_file = 'upstream_dns.txt'
-with open(output_file, 'w') as f:
+with open(output_file, 'w', encoding='utf-8') as f:
     f.write('\n'.join(output_lines) + '\n')
 
-print(f'Generated {output_file} with {len(output_lines)} lines.')
+print(f"生成完成！共 {all_lines_count} 条 upstream 规则")
+
+# 更新 README.md
+readme_path = 'README.md'
+if not os.path.exists(readme_path):
+    with open(readme_path, 'w', encoding='utf-8') as f:
+        f.write("# AdGuardHome Upstream DNS 项目\n\n## 最新统计\n\n（首次生成）\n")
+
+with open(readme_path, 'r', encoding='utf-8') as f:
+    readme_content = f.read()
+
+stats_section = f"""## 最新统计
+
+- 更新时间: {update_time}
+- 腾讯系域名: {stats.get('tencent', 0)}
+- 字节系域名: {stats.get('bytedance', 0)}
+- 阿里系域名: {stats.get('alibaba', 0)}
+- 中国大陆其他域名: {cn_count}
+- 总域名数量: {total_company + cn_count}
+- 总 upstream 条目: {all_lines_count}
+"""
+
+if re.search(r'## 最新统计', readme_content):
+    readme_content = re.sub(r'## 最新统计\n.*?(?=##|$)', stats_section.strip(), readme_content, flags=re.DOTALL)
+else:
+    readme_content = readme_content.rstrip() + '\n\n' + stats_section
+
+with open(readme_path, 'w', encoding='utf-8') as f:
+    f.write(readme_content.strip() + '\n')
+
+print("README.md 已成功更新统计信息！")
