@@ -1,4 +1,4 @@
-name: grok Generate AdGuard Home Upstream DNS File
+name: Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
