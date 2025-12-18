@@ -1,25 +1,27 @@
-name: grok-Generate AdGuard Home Upstream DNS File
+name: grok Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'
+    - cron: '0 0 */3 * *'  # 每3天 UTC 0点运行一次
   workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout dev 分支
         uses: actions/checkout@v4
         with:
           ref: dev
-          token: ${{ secrets.GITHUB_TOKEN }}  # 显式使用默认 token
           fetch-depth: 0
 
-      - name: 如果 dev 分支不存在，自动创建
+      - name: 自动创建 dev 分支（首次运行）
         run: |
           if ! git rev-parse --verify dev >/dev/null 2>&1; then
-            echo "dev 分支不存在，基于 main 创建并推送"
             git checkout -b dev
             git push origin dev
           fi
@@ -29,28 +31,26 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install requests
         run: pip install requests
 
-      - name: 删除旧文件
-        run: rm -f upstream_dns.txt
-
-      - name: 运行生成脚本
+      - name: 运行生成脚本（生成文件 + 更新 README）
         run: python scripts/generate_upstream.py
 
-      - name: 显示生成结果
-        run: |
-          echo "=== 生成的文件信息 ==="
-          ls -lh upstream_dns.txt
-          echo "=== 前10行预览 ==="
-          head -10 upstream_dns.txt
-          echo "=== 总行数 ==="
-          wc -l upstream_dns.txt
-
-      - name: Commit 并推送
+      - name: 提交并推送（只保留必要文件）
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add upstream_dns.txt
-          git commit -m "Auto update upstream_dns.txt $(date +'%Y-%m-%d %H:%M:%S')" || echo "无变更"
-          git push origin dev || git push origin dev --force-with-lease || echo "推送失败，请检查权限"
+          
+          # 只添加我们需要的文件
+          git add upstream_dns.txt README.md scripts/generate_upstream.py .github/workflows/generate.yml
+          
+          git commit -m "Auto update: upstream_dns.txt & README $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
+          git push origin dev --force-with-lease
+
+      - name: 清理旧 Actions 运行记录（保留最近5次）
+        uses: actions/delete-workflow-runs@v4
+        with:
+          repository: ${{ github.repository }}
+          workflow: generate.yml
+          keep_minimum_runs: 5
