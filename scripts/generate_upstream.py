@@ -99,7 +99,7 @@ for cat, (_, dns) in CATEGORIES.items():
 
 # 兜底规则
 output_lines.append(f"# 兜底：所有剩余域名")
-output_lines.append(f'[/./]{FALLBACK_DNS}')
+output_lines.append(f'[//]{FALLBACK_DNS}')
 all_lines_count += 1
 
 output_lines[7] = f"# 总 upstream 条目: {all_lines_count}"
