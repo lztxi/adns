@@ -2,12 +2,11 @@ name: grok Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'  # 每3天 UTC 0点运行一次
+    - cron: '0 0 */3 * *'  # 每3天运行一次
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: write
+  contents: write   # 只需写权限
 
 jobs:
   generate:
@@ -19,12 +18,20 @@ jobs:
           ref: dev
           fetch-depth: 0
 
-      - name: 自动创建 dev 分支（首次运行）
+      - name: 如果是第一次运行，创建 dev 分支
         run: |
           if ! git rev-parse --verify dev >/dev/null 2>&1; then
             git checkout -b dev
             git push origin dev
           fi
+
+      - name: 超级清理：删除所有旧文件，只保留必要结构
+        run: |
+          # 删除根目录下所有文件和文件夹（除了 .git）
+          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
+          
+          # 重新创建必要文件夹
+          mkdir -p scripts .github/workflows
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,37 +41,21 @@ jobs:
       - name: Install requests
         run: pip install requests
 
-      - name: 运行生成脚本（生成文件 + 更新 README）
+      - name: 重新添加脚本和 workflow 文件
+        run: |
+          # 这里假设你已经把最新脚本和 workflow 提交到仓库了
+          # Actions 会从远程拉取最新代码，所以不用手动复制
+
+      - name: 运行生成脚本（生成 upstream_dns.txt + 更新 README.md）
         run: python scripts/generate_upstream.py
 
-      - name: 提交并推送（只保留必要文件）
+      - name: 提交并强制推送（保持分支干净）
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           
-          # 只添加我们需要的文件
           git add upstream_dns.txt README.md scripts/generate_upstream.py .github/workflows/generate.yml
           
-          git commit -m "Auto update: upstream_dns.txt & README $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
+          git commit -m "Auto clean & update: $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
+          
           git push origin dev --force-with-lease
-
-      - name: 清理旧 Actions 运行记录（保留最近10次）
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runs = await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'generate.yml',
-              per_page: 100
-            });
-            const keep = 10;
-            const toDelete = runs.data.workflow_runs.slice(keep);
-            for (const run of toDelete) {
-              await github.rest.actions.deleteWorkflowRun({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: run.id
-              });
-              console.log(`Deleted run ${run.id}`);
-            }
