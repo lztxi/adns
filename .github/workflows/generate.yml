@@ -2,17 +2,26 @@ name: grok-Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'  # 每3天凌晨0点（UTC）运行一次
-  workflow_dispatch:      # 支持手动触发
+    - cron: '0 0 */3 * *'  # 每3天运行一次
+  workflow_dispatch:
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository (包括 dev 分支)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: dev             # 切换到 dev 分支工作
+          ref: dev
+          fetch-depth: 0
+
+      - name: 如果 dev 分支不存在，自动创建
+        run: |
+          if ! git rev-parse --verify dev >/dev/null 2>&1; then
+            echo "dev 分支不存在，基于 main 创建"
+            git checkout -b dev
+            git push origin dev
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -22,18 +31,25 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: 删除旧的运行日志（Artifacts 和 Workflow Runs 不需要手动删，这里清理可能残留的旧文件）
+      - name: 删除旧文件
+        run: rm -f upstream_dns.txt
+
+      - name: 运行生成脚本（带详细日志）
+        run: python scripts/generate_upstream.py || echo "脚本运行出错"
+
+      - name: 显示生成的文件内容和大小（调试用）
         run: |
-          git rm -f upstream_dns.txt || echo "No old file to remove"
-          rm -f upstream_dns.txt || echo "Local file removed"
+          echo "=== upstream_dns.txt 文件大小 ==="
+          ls -lh upstream_dns.txt || echo "文件不存在！"
+          echo "=== 文件前20行内容 ==="
+          head -20 upstream_dns.txt || echo "文件为空或不存在"
+          echo "=== 总行数 ==="
+          wc -l upstream_dns.txt || echo "无法统计"
 
-      - name: 运行生成脚本
-        run: python scripts/generate_upstream.py
-
-      - name: Commit 并推送到 dev 分支
+      - name: Commit 并强制推送
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add upstream_dns.txt
-          git commit -m "Auto update upstream_dns.txt $(date +'%Y-%m-%d')" || echo "No changes to commit"
-          git push origin dev || echo "Push failed or no changes"
+          git commit -m "Auto update upstream_dns.txt $(date +'%Y-%m-%d %H:%M:%S')" || echo "Nothing to commit"
+          git push origin dev --force-with-lease || echo "Push failed"
