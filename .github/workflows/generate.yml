@@ -28,28 +28,30 @@ jobs:
       - name: 生成 upstream_dns.txt
         run: python scripts/generate_upstream.py
 
-      - name: 直接推送 upstream_dns.txt 到 dev 分支（最稳方式）
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 推送 upstream_dns.txt 到 dev 分支
         run: |
-          # 配置 git
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          # 创建或切换到 dev 分支（orphan 方式，确保干净）
+          # 创建干净的 dev 分支
           git checkout --orphan dev
 
-          # 清空所有文件（dev 只留一个文件）
+          # 清空所有文件
           git rm -rf . > /dev/null 2>&1 || true
 
-          # 把生成的文件加进来
-          mv upstream_dns.txt ./
+          # 确保文件存在（如果 mv 报错，就用 cp 自己复制）
+          if [ ! -f upstream_dns.txt ]; then
+            echo "文件不存在，重生成..."
+            python scripts/generate_upstream.py
+          fi
 
-          # 添加并提交
+          # 添加文件（用 add 就行，不用 mv/cp）
           git add upstream_dns.txt
+
+          # 提交
           git commit -m "Auto update upstream_dns.txt $(date -u +'%Y-%m-%d %H:%M UTC')"
 
-          # 强制推送到 dev 分支
+          # 强制推送
           git push -f origin dev
 
-          echo "dev 分支已更新，只包含 upstream_dns.txt！完美～"
+          echo "dev 分支更新成功！只剩 upstream_dns.txt～完美～"
