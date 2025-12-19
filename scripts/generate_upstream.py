@@ -1,10 +1,18 @@
 import requests
 from datetime import datetime
+from urllib.parse import urlparse
 
-# DNS 配置
+# DNS 配置（腾讯/阿里 DoH，字节 IP）
 TENCENT_DNS = 'https://doh.pub/dns-query'
 BYTEDANCE_DNS = '180.184.1.1'
 ALIBABA_DNS = 'https://dns.alidns.com/dns-query'
+
+# 新源地址（MetaCubeX 更全更活跃～）
+SOURCE_URLS = {
+    'tencent': 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/tencent.list',
+    'bytedance': 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/bytedance.list',
+    'alibaba': 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/alibaba.list'
+}
 
 CATEGORIES = {
     'tencent': ('腾讯系', TENCENT_DNS),
@@ -12,54 +20,47 @@ CATEGORIES = {
     'alibaba': ('阿里系', ALIBABA_DNS)
 }
 
-BASE_URL = 'https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/'
+def get_root_domain(domain):
+    """提取根域名（二级域名，如 sub.qq.com → qq.com）"""
+    parts = domain.split('.')
+    if len(parts) <= 2:
+        return domain
+    return '.'.join(parts[-2:])  # 简单处理，假设常见 .com/.cn 等
 
-def fetch_domains(category):
-    url = f'{BASE_URL}{category}'
+def fetch_domains(url):
     try:
         response = requests.get(url, timeout=30)
         response.raise_for_status()
     except Exception as e:
-        print(f"下载 {category} 失败: {e}")
+        print(f"下载 {url} 失败: {e}")
         return set()
     
-    domains = set()
+    root_domains = set()
     for line in response.text.splitlines():
-        original_line = line.strip()
-        if not original_line or original_line.startswith(('#', 'include:', 'regexp:', 'keyword:', 'attr:', 'full:')):
+        line = line.strip()
+        if not line or line.startswith('#'):
             continue
-        
-        # 处理 domain: 开头
-        if original_line.startswith('domain:'):
-            domain_part = original_line[7:].strip()
-        else:
-            domain_part = original_line
-        
-        # 关键：如果有 @!cn 或其他属性，只取 @ 之前的部分
-        if '@' in domain_part:
-            domain = domain_part.split('@')[0].strip()
-        else:
-            domain = domain_part.strip()
-        
-        # 确保是有效域名
-        if domain and '.' in domain and not domain.startswith('.'):
-            domains.add(domain.lower())
+        # 直接取域名（MetaCubeX 列表是纯域名）
+        domain = line.lower()
+        if domain and '.' in domain:
+            root = get_root_domain(domain)
+            root_domains.add(root)
     
-    return domains
+    return root_domains
 
-# 下面部分不变（统计 + 生成）
-print("开始下载三大公司域名列表（智能保留 @!cn 前域名）...")
+print("开始从 MetaCubeX 下载三大公司根域名列表（去重整合）...")
 company_domains = {}
 total_domains = 0
 stats = {}
 
 for cat, (name, _) in CATEGORIES.items():
-    domains = fetch_domains(cat)
+    url = SOURCE_URLS[cat]
+    domains = fetch_domains(url)
     company_domains[cat] = domains
     count = len(domains)
     total_domains += count
     stats[cat] = count
-    print(f"{name} 域名数量: {count}（已保留 @!cn 前部分）")
+    print(f"{name} 根域名数量: {count}")
 
 update_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
 
@@ -73,13 +74,13 @@ def generate_upstream_lines(domains, dns_server, max_per_line=50):
     return lines
 
 output_lines = [
-    "# AdGuardHome Upstream DNS 文件 - 自动生成（智能处理 @!cn）",
+    "# AdGuardHome Upstream DNS 文件 - 自动生成（MetaCubeX 源 + 根域名整合）",
     f"# 更新时间: {update_time}",
-    f"# 腾讯系: {stats.get('tencent', 0)} 域名 → DoH {TENCENT_DNS}",
-    f"# 字节系: {stats.get('bytedance', 0)} 域名 → IP {BYTEDANCE_DNS}",
-    f"# 阿里系: {stats.get('alibaba', 0)} 域名 → DoH {ALIBABA_DNS}",
+    f"# 腾讯系根域名: {stats.get('tencent', 0)} → DoH {TENCENT_DNS}",
+    f"# 字节系根域名: {stats.get('bytedance', 0)} → IP {BYTEDANCE_DNS}",
+    f"# 阿里系根域名: {stats.get('alibaba', 0)} → DoH {ALIBABA_DNS}",
     f"# 兜底说明: 请在 AdGuard Home 主 Upstream 最下面加 202.98.0.68",
-    f"# 总域名数量（三大公司）: {total_domains}",
+    f"# 总根域名数量: {total_domains}",
     f"# 总 upstream 条目: 0（下方计算）",
     ""
 ]
@@ -97,4 +98,4 @@ output_lines[7] = f"# 总 upstream 条目: {all_lines_count}"
 with open('upstream_dns.txt', 'w', encoding='utf-8') as f:
     f.write('\n'.join(output_lines) + '\n')
 
-print(f"生成成功！已智能保留 @!cn 前域名，共 {all_lines_count} 条规则")
+print(f"生成成功！MetaCubeX 源更全，共 {total_domains} 个根域名，{all_lines_count} 条规则～")
