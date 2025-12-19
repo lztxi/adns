@@ -2,7 +2,7 @@ name: Generate AdGuard Home Upstream DNS File
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'  # 每3天运行一次
+    - cron: '0 0 */3 * *'
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main 分支（源码分支）
+      - name: Checkout main 分支
         uses: actions/checkout@v4
         with:
           ref: main
@@ -25,23 +25,31 @@ jobs:
       - name: Install requests
         run: pip install requests
 
-      - name: 生成 upstream_dns.txt（在 main 分支）
+      - name: 生成 upstream_dns.txt
         run: python scripts/generate_upstream.py
 
-      - name: 推送 upstream_dns.txt 到 dev 分支（强制覆盖）
+      - name: 直接推送 upstream_dns.txt 到 dev 分支（最稳方式）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 配置 git
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          
-          # 强制切换到 dev 分支（如果不存在就创建）
-          git checkout dev || git checkout -b dev
-          
-          # 直接复制覆盖（不管原来有没有）
-          cp ../upstream_dns.txt upstream_dns.txt
-          
-          # 添加、提交、强制推送
-          git add upstream_dns.txt
-          git commit -m "Auto update upstream_dns.txt $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "无变更"
-          git push origin dev --force-with-lease
 
-          echo "dev 分支 upstream_dns.txt 更新成功！"
+          # 创建或切换到 dev 分支（orphan 方式，确保干净）
+          git checkout --orphan dev
+
+          # 清空所有文件（dev 只留一个文件）
+          git rm -rf . > /dev/null 2>&1 || true
+
+          # 把生成的文件加进来
+          mv upstream_dns.txt ./
+
+          # 添加并提交
+          git add upstream_dns.txt
+          git commit -m "Auto update upstream_dns.txt $(date -u +'%Y-%m-%d %H:%M UTC')"
+
+          # 强制推送到 dev 分支
+          git push -f origin dev
+
+          echo "dev 分支已更新，只包含 upstream_dns.txt！完美～"
