@@ -3,9 +3,9 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 # DNS 配置（腾讯/阿里 DoH，字节 IP）
-TENCENT_DNS = 'https://doh.pub/dns-query'
-BYTEDANCE_DNS = '180.184.1.1'
-ALIBABA_DNS = 'https://dns.alidns.com/dns-query'
+TENCENT_DNS = '119.29.29.29 119.28.28.28'
+BYTEDANCE_DNS = '180.184.1.1 180.184.2.2'
+ALIBABA_DNS = '223.5.5.5 223.6.6.6'
 
 # 新源地址（MetaCubeX 更全更活跃～）
 SOURCE_URLS = {
