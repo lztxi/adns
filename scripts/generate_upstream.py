@@ -4,10 +4,8 @@ from urllib.parse import urlparse
 import os
 
 # DNS 配置（腾讯/阿里 DoH，字节 IP）
-#TENCENT_DNS = '119.29.29.29 119.28.28.28'
 TENCENT_DNS = 'https://doh.pub/dns-query'
 BYTEDANCE_DNS = '180.184.1.1 180.184.2.2'
-#ALIBABA_DNS = '223.5.5.5 223.6.6.6'
 ALIBABA_DNS = 'https://dns.alidns.com/dns-query'
 
 # 新源地址（MetaCubeX 更全更活跃～）
