@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime
 from urllib.parse import urlparse
+import os
 
 # DNS 配置（腾讯/阿里 DoH，字节 IP）
 #TENCENT_DNS = '119.29.29.29 119.28.28.28'
@@ -50,6 +51,47 @@ def fetch_domains(url):
     
     return root_domains
 
+def update_readme(stats, total_domains, all_lines_count, update_time):
+    """更新 README.md 文件中的统计信息"""
+    readme_content = f"""# AdGuardHome Upstream DNS 项目
+
+自动生成国内三大互联网公司的专用 DNS 上游配置，优化国内网站访问速度。
+
+## 📊 统计信息
+
+- **最后更新时间**: {update_time}
+- **总根域名数量**: {total_domains}
+- **总 upstream 条目**: {all_lines_count}
+- **腾讯系域名数量**: {stats.get('tencent', 0)}
+- **字节系域名数量**: {stats.get('bytedance', 0)}
+- **阿里系域名数量**: {stats.get('alibaba', 0)}
+
+## 🚀 使用方法
+
+1. 下载 `upstream_dns.txt` 文件
+2. 在 AdGuard Home 的「设置」→「DNS 设置」→「上游 DNS 服务器」中粘贴内容
+3. 在主 Upstream 最下面添加兜底 DNS：`202.98.0.68`
+
+## 🔄 自动更新
+
+本项目每 3 天自动更新一次域名列表，确保数据最新。
+
+## 📁 文件说明
+
+- `upstream_dns.txt`: 生成的 AdGuardHome 上游 DNS 配置
+- `scripts/generate_upstream.py`: 生成脚本
+- `.github/workflows/generate.yml`: GitHub Actions 工作流
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+"""
+
+    with open('README.md', 'w', encoding='utf-8') as f:
+        f.write(readme_content)
+    
+    print("README.md 统计信息已更新！")
+
 print("开始从 MetaCubeX 下载三大公司根域名列表（去重整合）...")
 company_domains = {}
 total_domains = 0
@@ -97,7 +139,12 @@ for cat, (_, dns) in CATEGORIES.items():
 
 output_lines[7] = f"# 总 upstream 条目: {all_lines_count}"
 
+# 生成 upstream_dns.txt
 with open('upstream_dns.txt', 'w', encoding='utf-8') as f:
     f.write('\n'.join(output_lines) + '\n')
 
+# 更新 README.md 统计信息
+update_readme(stats, total_domains, all_lines_count, update_time)
+
 print(f"生成成功！MetaCubeX 源更全，共 {total_domains} 个根域名，{all_lines_count} 条规则～")
+print(f"README.md 已更新统计信息：最后更新 {update_time}")
