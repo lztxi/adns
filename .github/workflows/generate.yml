@@ -25,10 +25,10 @@ jobs:
       - name: Install requests
         run: pip install requests
 
-      - name: 生成 upstream_dns.txt
+      - name: 生成 upstream_dns.txt 和更新 README.md
         run: python scripts/generate_upstream.py
 
-      - name: 推送 upstream_dns.txt 到 dev 分支
+      - name: 推送文件到 dev 分支
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -39,22 +39,22 @@ jobs:
           # 清空所有文件
           git rm -rf . > /dev/null 2>&1 || true
 
-          # 确保文件存在（如果 mv 报错，就用 cp 自己复制）
+          # 确保文件存在
           if [ ! -f upstream_dns.txt ]; then
             echo "文件不存在，重生成..."
             python scripts/generate_upstream.py
           fi
 
-          # 添加文件（用 add 就行，不用 mv/cp）
-          git add upstream_dns.txt
+          # 添加 upstream_dns.txt 和 README.md
+          git add upstream_dns.txt README.md
 
           # 提交
-          git commit -m "Auto update upstream_dns.txt $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git commit -m "Auto update: upstream_dns.txt and README.md $(date -u +'%Y-%m-%d %H:%M UTC')"
 
           # 强制推送
           git push -f origin dev
 
-          echo "dev 分支更新成功！只剩 upstream_dns.txt～完美～"
+          echo "dev 分支更新成功！包含 upstream_dns.txt 和 README.md～"
           
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@main
